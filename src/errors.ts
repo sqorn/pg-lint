@@ -1,7 +1,12 @@
 import { codeFrameColumns, SourceLocation } from "@babel/code-frame"
+import { NodePath } from "@babel/traverse"
 import { ParsingError } from "pg-query-parser"
 import { Query } from "./parse-file"
 import { QueryNodePath } from "./query-parser-utils"
+
+export interface BabelSyntaxError extends Error {
+  sourceLocation: SourceLocation
+}
 
 export interface SyntaxError extends Error {
   location: number
@@ -32,7 +37,11 @@ function translateIndexToSourceLocation (text: string, index: number): SourceLoc
 }
 
 export function isAugmentedError (error: Error | SyntaxError | ValidationError) {
-  return error.name === "QuerySyntaxError" || error.name === "ValidationError"
+  return [
+    "BabelSyntaxError",
+    "QuerySyntaxError",
+    "ValidationError"
+  ].indexOf(error.name) > -1
 }
 
 export function augmentFileValidationError (error: Error | SyntaxError | ValidationError, query: Query) {
@@ -47,6 +56,13 @@ export function augmentFileValidationError (error: Error | SyntaxError | Validat
     formattedQuery
   )
   return error
+}
+
+export function augmentBabelSyntaxError (error: Error, path: NodePath): BabelSyntaxError {
+  return Object.assign(error as BabelSyntaxError, {
+    name: "BabelSyntaxError",
+    sourceLocation: path.node.loc
+  })
 }
 
 export function augmentQuerySyntaxError (error: Error, syntaxError: ParsingError): SyntaxError {

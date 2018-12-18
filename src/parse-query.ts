@@ -2,7 +2,7 @@ import { NodePath } from "@babel/traverse"
 import * as types from "@babel/types"
 import * as QueryParser from "pg-query-parser"
 import { getReferencedNamedImport } from "./babel-parser-utils"
-import { augmentFileValidationError, augmentQuerySyntaxError } from "./errors"
+import { augmentBabelSyntaxError, augmentFileValidationError, augmentQuerySyntaxError } from "./errors"
 import {
   createQueryNodePath,
   findParentQueryStatement,
@@ -51,7 +51,7 @@ function filterDuplicateTableRefs (tableRefs: TableReference[]) {
   )
 }
 
-function isSpreadInsertExpression (expression: NodePath<any>) {
+function isSpreadInsertExpression (expression: NodePath<any>): expression is NodePath<types.CallExpression> {
   if (!expression.isCallExpression()) return false
 
   const callee = expression.get("callee")
@@ -153,6 +153,34 @@ function getReferencedColumns (parsedQuery: QueryParser.Query): ColumnReference[
   return referencedColumns
 }
 
+function getSpreadInsertReferencedColumnNames (path: NodePath<types.CallExpression>): string[] {
+  const args = path.get("arguments")
+  const arg = args[0]
+
+  if (args.length !== 1) {
+    throw augmentBabelSyntaxError(new Error(`Expected spreadInsert() to be called with one argument. Is called with ${args.length}.`), path)
+  }
+
+  if (arg.isObjectExpression()) {
+    const objectProperties = arg.get("properties")
+      .filter(property => property.isObjectProperty()) as NodePath<types.ObjectProperty>[]
+
+    return objectProperties.map(property => {
+      const key = property.get("key")
+
+      if (!Array.isArray(key) && key.isIdentifier()) {
+        return key.node.name
+      } else if (!Array.isArray(key) && key.isStringLiteral()) {
+        return key.node.value
+      }
+      return null
+    }).filter(columnName => Boolean(columnName)) as string[]
+  } else {
+    // Not statically analyzable without resolved TypeScript types
+    return []
+  }
+}
+
 export function parseQuery (path: NodePath<types.TemplateLiteral>, filePath: string): Query {
   const expressions = path.get("expressions")
   const textPartials = path.get("quasis").map(quasi => quasi.node.value.cooked)
@@ -160,7 +188,17 @@ export function parseQuery (path: NodePath<types.TemplateLiteral>, filePath: str
   let templatedQueryString = textPartials[0]
 
   for (let index = 0; index < expressions.length; index++) {
-    templatedQueryString += isSpreadInsertExpression(expressions[index]) ? `SELECT \$${index + 1}` : `\$${index + 1}`
+    const expression = expressions[index]
+
+    if (isSpreadInsertExpression(expression)) {
+      templatedQueryString += `SELECT \$${index + 1}`
+      // TODO: - Keep array of insert expressions incl. position in SQL query string
+      //       - Iterate over them after for-loop
+      //       - Reuse logic from getReferencedColumns() to get referenceable tables at each expression position
+      //       - Add ColumnReference[]
+    } else {
+      templatedQueryString += `\$${index + 1}`
+    }
 
     if (textPartials[index + 1]) {
       templatedQueryString += textPartials[index + 1]
