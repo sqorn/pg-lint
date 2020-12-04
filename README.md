@@ -10,7 +10,7 @@ Parses source files with [Babel](https://babeljs.io/). Will additionally fire up
 
 Use with [sqldb](https://github.com/andywer/sqldb). It provides SQL tagged template strings, auto-escapes dynamic expressions to prevent SQL injections and comes with some syntactic sugar to write short, explicit SQL queries.
 
-Parses SQL queries with [`pg-query-parser`](npmjs.com/package/pg-query-parser). It is built on `libpg_query`, the actual Postgres query parser implementation.
+Parses SQL queries with [`pg-query-parser`](https://npmjs.com/package/pg-query-parser). It is built on `libpg_query`, the actual Postgres query parser implementation.
 
 ## Usage
 
